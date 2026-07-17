@@ -1,95 +1,118 @@
-
 import cv2
-from fer import FER
 import matplotlib.pyplot as plt
+import numpy as np
 
-# Function to capture a photo using the webcam
-def capture_photo():
-    # Start capturing video from the webcam
+# Load OpenCV face and smile cascades
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+smile_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + 'haarcascade_smile.xml')
+eye_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + 'haarcascade_eye.xml')
+
+
+def capture_and_analyze():
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
         print("Error: Could not open webcam.")
-        return None
+        return
 
     print("Press 'c' to capture a photo.")
     while True:
-        # Read a frame from the webcam
         ret, frame = cap.read()
         if not ret:
-            print("Error: Could not read frame.")
             break
 
-        # Display the frame in a window
-        cv2.imshow('Webcam', frame)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
 
-        # Check for user input to capture the photo
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            cv2.putText(frame, "Face Detected", (x, y-10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        cv2.imshow('Webcam - Press C to capture', frame)
+
         if cv2.waitKey(1) & 0xFF == ord('c'):
             filename = 'photo.jpg'
             cv2.imwrite(filename, frame)
             print(f'Photo saved to {filename}')
-            break
+            cap.release()
+            cv2.destroyAllWindows()
+            analyze_photo(filename)
+            return
 
-    # Release the webcam and close the window
     cap.release()
     cv2.destroyAllWindows()
 
-    return filename
 
-# Function to detect emotions from the captured image
-def detect_emotions_in_photo(filename):
-    try:
-        if filename:
-            # Load the image
-            img = cv2.imread(filename)
+def analyze_photo(filename):
+    img = cv2.imread(filename)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-            # Convert image from BGR (OpenCV format) to RGB (FER format)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
 
-            # Detect emotions using the FER package
-            emotion_detector = FER()
-            emotions = emotion_detector.detect_emotions(img_rgb)
+    results = []
+    for (x, y, w, h) in faces:
+        roi_gray = gray[y:y+h, x:x+w]
+        roi_rgb = img_rgb[y:y+h, x:x+w]
 
-            # If emotions are detected, annotate and display the image
-            if emotions:
-                for face in emotions:
-                    bounding_box = face["box"]
-                    detected_emotions = face["emotions"]
+        # Detect smile
+        smiles = smile_cascade.detectMultiScale(roi_gray, 1.8, 20)
+        # Detect eyes
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 10)
 
-                    # Draw bounding box around the detected face
-                    cv2.rectangle(img_rgb, (bounding_box[0], bounding_box[1]),
-                                  (bounding_box[0] + bounding_box[2], bounding_box[1] + bounding_box[3]),
-                                  (0, 255, 0), 2)
-
-                    # Display the emotion labels and scores on the image
-                    for idx, (emotion, score) in enumerate(detected_emotions.items()):
-                        cv2.putText(img_rgb, f'{emotion}: {score:.2f}',
-                                    (bounding_box[0], bounding_box[1] - 10 - idx * 20),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-
-                    # Print the detected emotions in the console (text output)
-                    print(f"Detected emotions for face at {bounding_box}:")
-                    for emotion, score in detected_emotions.items():
-                        print(f'{emotion}: {score:.2f}')
-                    print("\n")
-
-                # Display the annotated image using Matplotlib
-                plt.figure(figsize=(8, 6))
-                plt.imshow(img_rgb)
-                plt.axis('off')
-                plt.show()
-            else:
-                print("No face detected or unable to detect emotions.")
-                plt.imshow(img_rgb)
-                plt.title("Captured Image with No Face Detected")
-                plt.axis('off')
-                plt.show()
+        # Simple rule-based emotion
+        if len(smiles) > 0:
+            emotion = "Happy 😊"
+            color = (0, 255, 0)
+        elif len(eyes) == 0:
+            emotion = "Tired / Eyes Closed 😴"
+            color = (255, 165, 0)
         else:
-            print("No filename provided.")
-    except Exception as e:
-        print(f"Error in detecting emotions: {e}")
+            emotion = "Neutral 😐"
+            color = (255, 255, 0)
 
-# Main function to execute the photo capture and emotion detection
+        results.append({
+            'box': (x, y, w, h),
+            'emotion': emotion,
+            'smiles': len(smiles),
+            'eyes': len(eyes)
+        })
+
+        cv2.rectangle(img_rgb, (x, y), (x+w, y+h), color, 3)
+        cv2.putText(img_rgb, emotion, (x, y-15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+    if results:
+        print(f"\nDetected {len(results)} face(s):")
+        for i, r in enumerate(results):
+            print(
+                f"  Face {i+1}: {r['emotion']} | Eyes: {r['eyes']} | Smiles: {r['smiles']}")
+
+        # Plot
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        ax1.imshow(img_rgb)
+        ax1.set_title(
+            f"Facial Expression Analysis\n{results[0]['emotion']}", fontsize=13)
+        ax1.axis('off')
+
+        categories = ['Faces Detected', 'Eyes Detected', 'Smiles Detected']
+        values = [len(results), results[0]['eyes'], results[0]['smiles']]
+        ax2.bar(categories, values, color=['steelblue', 'green', 'orange'])
+        ax2.set_title("Detection Summary", fontsize=13)
+        ax2.set_ylabel("Count")
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("No face detected.")
+        plt.imshow(img_rgb)
+        plt.title("No Face Detected")
+        plt.axis('off')
+        plt.show()
+
+
 if __name__ == "__main__":
-    filename = capture_photo()
-    detect_emotions_in_photo(filename)
+    capture_and_analyze()

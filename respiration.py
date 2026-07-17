@@ -5,7 +5,9 @@ from matplotlib import pyplot as plt
 # Constants for bounding box adjustments
 x1, x2 = 0.4, 0.6
 y1, y2 = 0.1, 0.25
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
 
 def getFaceROI(img):
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -19,16 +21,19 @@ def getFaceROI(img):
     else:
         return [0, 0, 0, 0]
 
+
 cv2.namedWindow("tracking")
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+cap = cv2.VideoCapture(0)
 
 cap.set(cv2.CAP_PROP_FPS, 10)
 fps = cap.get(cv2.CAP_PROP_FPS)
 print(fps)
-step = int(1000 / fps)
+step = int(1000 / fps) if fps > 0 else 33
+
 
 def getColorAverage(frame, color_id):
     return frame[:, :, color_id].sum() * 1.0 / (frame.shape[0] * frame.shape[1])
+
 
 ok, frame = cap.read()
 if not ok:
@@ -53,7 +58,7 @@ m_diff = 0
 flag = True
 while flag:
     ret, frame = cap.read()
-    
+
     if idf > 0:
         df = cv2.absdiff(frame, previous_frame)
         m_diff = 1.0 * df.sum() / (df.shape[0] * df.shape[1])
@@ -64,7 +69,8 @@ while flag:
                 bbox = droi
 
     roi = frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-    frame = cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
+    frame = cv2.rectangle(
+        frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
 
     green = getColorAverage(roi, 1)  # Get green channel intensity
     gsums.append(green)
@@ -77,7 +83,7 @@ while flag:
     previous_frame = frame.copy()
     idf += 1
     cv2.imshow('tracking', frame)
-    
+
     if cv2.waitKey(1) == 27:  # Exit on 'ESC' key
         break
 
